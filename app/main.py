@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from app.core.logging import configure_logging
 from app.api.v1.router import api_router
 
+configure_logging()
+
 app = FastAPI(title="PA Copilot API", version="0.0.1")
 
 @app.get("/health")
