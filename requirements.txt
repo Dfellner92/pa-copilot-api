@@ -4,3 +4,6 @@ SQLAlchemy==2.0.*
 psycopg[binary]==3.2.*
 pydantic-settings==2.4.*
 alembic==1.13.*
+passlib[bcrypt]==1.7.*
+PyJWT==2.9.*
+python-multipart==0.0.9

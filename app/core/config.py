@@ -6,4 +6,9 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     database_url: str 
 
+    secret_key: str   
+    jwt_alg: str           
+    access_token_expire_minutes: int
+
+
 settings = Settings()
