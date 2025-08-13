@@ -1,8 +1,9 @@
-from pydantic import BaseModel
-import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="")
     app_name: str = "PA Copilot API"
-    env: str = os.getenv("APP_ENV", "dev")
+    app_env: str = "dev"
+    database_url: str 
 
 settings = Settings()
