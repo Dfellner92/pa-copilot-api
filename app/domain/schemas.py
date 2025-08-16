@@ -19,3 +19,12 @@ class PriorAuthOut(BaseModel):
     disposition: str
     requiresAuth: bool
     requiredDocs: List[str]
+
+
+# dev only
+class DocumentRefOut(BaseModel):
+    id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    url: str

@@ -9,6 +9,6 @@ class Settings(BaseSettings):
     secret_key: str   
     jwt_alg: str           
     access_token_expire_minutes: int
-
+    file_storage_dir: str 
 
 settings = Settings()

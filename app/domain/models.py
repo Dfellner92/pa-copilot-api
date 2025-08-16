@@ -39,3 +39,16 @@ class PriorAuthRequest(Base):
     disposition: Mapped[str] = mapped_column(String(255), default="")        # brief reason/note
     patient = relationship("Patient")
     coverage = relationship("Coverage")
+
+class DocumentReference(Base):
+    __tablename__ = "document_references"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False, default=0)
+
+    storage_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=True)
+    pa_request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("prior_auth_requests.id"), nullable=True)
