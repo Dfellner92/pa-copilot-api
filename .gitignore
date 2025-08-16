@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .env
+.env.test
+.env.test.neon
+test.db

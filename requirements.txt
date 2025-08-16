@@ -7,3 +7,7 @@ alembic==1.13.*
 passlib[bcrypt]==1.7.*
 PyJWT==2.9.*
 python-multipart==0.0.9
+pytest
+httpx
+pytest-asyncio
+pytest-dotenv
