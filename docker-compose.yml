@@ -3,7 +3,7 @@ services:
     build: .
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      ENV: ${ENV}
+      ENV: ${APP_ENV}
       SECRET_KEY: ${SECRET_KEY}
       FILE_STORAGE_DIR: /data/uploads
     ports:
@@ -15,6 +15,3 @@ services:
 
 volumes:
   app_data:
-
-env_file:
-  - .env
