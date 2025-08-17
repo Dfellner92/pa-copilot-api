@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ENV: ${ENV}
+      SECRET_KEY: ${SECRET_KEY}
+      FILE_STORAGE_DIR: /data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - app_data:/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  app_data:
+
+env_file:
+  - .env
