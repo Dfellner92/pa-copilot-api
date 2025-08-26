@@ -27,10 +27,18 @@ def submit_prior_auth(payload: PriorAuthCreateIn, db: Session = Depends(get_db))
 
 @router.get("/requests/{pa_id}", response_model=PriorAuthOut)
 def get_prior_auth(pa_id: str, db: Session = Depends(get_db)):
-    par = db.query(PriorAuthRequest).get(pa_id)
+    # Validate and cast to UUID so primary-key lookup matches
+    try:
+        key = UUID(pa_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    # Prefer SQLAlchemy 2.0 style session.get(Model, pk)
+    par = db.get(PriorAuthRequest, key)
     if not par:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    # recompute requires/docs for convenience (idempotent)
+
+    # recompute requires/docs
     from app.services.requirements import check_requirements
     requires, required_docs = check_requirements(par.code)
     return {
@@ -40,7 +48,6 @@ def get_prior_auth(pa_id: str, db: Session = Depends(get_db)):
         "requiresAuth": requires,
         "requiredDocs": required_docs,
     }
-
 @router.get("/requests")
 def list_prior_auths(
     status: str | None = None,
