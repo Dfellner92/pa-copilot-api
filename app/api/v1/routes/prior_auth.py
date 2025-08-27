@@ -1,5 +1,9 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+
 from app.db import get_db
 from app.domain.schemas import PriorAuthCreateIn, PriorAuthOut
 from app.domain.models import PriorAuthRequest
@@ -20,34 +24,39 @@ def submit_prior_auth(payload: PriorAuthCreateIn, db: Session = Depends(get_db))
     return {
         "id": str(par.id),
         "status": par.status,
-        "disposition": par.disposition,
+        "disposition": getattr(par, "disposition", None),
         "requiresAuth": getattr(par, "_requires", True),
         "requiredDocs": getattr(par, "_required_docs", []),
     }
 
 @router.get("/requests/{pa_id}", response_model=PriorAuthOut)
 def get_prior_auth(pa_id: str, db: Session = Depends(get_db)):
-    # Validate and cast to UUID so primary-key lookup matches
+    # Normalize and validate the id
     try:
         key = UUID(pa_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    # Prefer SQLAlchemy 2.0 style session.get(Model, pk)
-    par = db.get(PriorAuthRequest, key)
+    # Robust fetch that works whether the PK column is UUID or String
+    stmt = select(PriorAuthRequest).where(
+        (PriorAuthRequest.id == key) | (PriorAuthRequest.id == str(key))
+    )
+    par = db.execute(stmt).scalar_one_or_none()
     if not par:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    # recompute requires/docs
+    # Recompute requires/docs (idempotent convenience)
     from app.services.requirements import check_requirements
     requires, required_docs = check_requirements(par.code)
+
     return {
         "id": str(par.id),
         "status": par.status,
-        "disposition": par.disposition,
+        "disposition": getattr(par, "disposition", None),
         "requiresAuth": requires,
         "requiredDocs": required_docs,
     }
+
 @router.get("/requests")
 def list_prior_auths(
     status: str | None = None,
@@ -66,7 +75,7 @@ def list_prior_auths(
         requires, docs = check_requirements(r.code)
         out.append({
             "id": str(r.id),
-            "status": r.status,                    # e.g. "pending"
+            "status": r.status,  # e.g. "pending"
             "disposition": getattr(r, "disposition", None),
             "requiresAuth": requires,
             "requiredDocs": docs,
