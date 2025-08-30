@@ -8,6 +8,7 @@ from app.domain.enums import PriorAuthStatus
 class Patient(Base):
     __tablename__ = "patients"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, unique=True)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name:  Mapped[str] = mapped_column(String(100), nullable=False)
     birth_date: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -22,6 +23,8 @@ class User(Base):
 class Coverage(Base):
     __tablename__ = "coverages"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # NEW: stable business key to resolve non-UUID IDs (e.g., 'cov-A123')
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, unique=True)
     member_id: Mapped[str] = mapped_column(String(64), nullable=False)
     plan: Mapped[str] = mapped_column(String(100), nullable=False)
     payer: Mapped[str] = mapped_column(String(100), nullable=False)

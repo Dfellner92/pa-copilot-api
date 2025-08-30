@@ -16,11 +16,40 @@ def seed_user(email: str, password: str, roles: str = "clinician", db: Session =
     db.commit()
     return {"detail": "ok"}
 
-@router.post("/token", summary="Login to get access token")
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form.username).first()
-    if not user or not verify_password(form.password, user.hashed_password):
+@router.post("/auth/token")
+async def login(request: Request, db: Session = Depends(get_db)):
+    """
+    Accepts either:
+      - JSON: {"email": "...", "password": "..."} (or {"username": "...", "password": "..."})
+      - Form:  username=...&password=... (application/x-www-form-urlencoded)
+    Returns:  {"access_token": "...", "token_type": "bearer"}
+    """
+    # 1) Parse credentials from JSON or form (fallback)
+    content_type = request.headers.get("content-type", "")
+    username = ""
+    password = ""
+
+    try:
+        if "application/json" in content_type:
+            body = await request.json()
+            username = (body.get("email") or body.get("username") or "").strip()
+            password = (body.get("password") or "").strip()
+        else:
+            form = await request.form()
+            username = (form.get("username") or form.get("email") or "").strip()
+            password = (form.get("password") or "").strip()
+    except Exception:
+        # Bad body payload – treat as invalid credentials
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    roles = [r for r in user.roles.split(",") if r]
-    token = create_access_token(sub=str(user.id), roles=roles)
+
+    if not username or not password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    # 2) Authenticate (your function should look the user up by email and bcrypt-verify)
+    user = authenticate_user(db, username, password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    # 3) Issue JWT
+    token = create_access_token(str(user.id))
     return {"access_token": token, "token_type": "bearer"}
