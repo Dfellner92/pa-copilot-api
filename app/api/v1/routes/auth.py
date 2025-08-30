@@ -16,7 +16,7 @@ def seed_user(email: str, password: str, roles: str = "clinician", db: Session =
     db.commit()
     return {"detail": "ok"}
 
-@router.post("/auth/token")
+@router.post("/token", summary="Login")
 async def login(request: Request, db: Session = Depends(get_db)):
     """
     Accepts either:
