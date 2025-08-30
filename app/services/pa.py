@@ -1,22 +1,28 @@
 # app/services/pa.py
 import uuid
+from typing import Optional
+
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import IntegrityError
+
+from fastapi import HTTPException, status
 
 from app.services.requirements import check_requirements
 from app.domain.models import (
     Patient,
     Coverage,
     PriorAuthRequest,
-    PriorAuthStatus,
+    PriorAuthStatus,  # re-exported from app.domain.enums via models
 )
 
-# -------- helpers
+# -----------------------
+# Helpers
+# -----------------------
 
-def _to_uuid(v):
+def _to_uuid(v) -> uuid.UUID:
     return v if isinstance(v, uuid.UUID) else uuid.UUID(str(v))
 
-def _maybe_uuid(v):
+def _maybe_uuid(v) -> Optional[uuid.UUID]:
     try:
         return _to_uuid(v)
     except Exception:
@@ -24,56 +30,47 @@ def _maybe_uuid(v):
 
 def _resolve_patient_id(db: Session, ident: str | uuid.UUID) -> uuid.UUID:
     """
-    Accepts a UUID or an external identifier (e.g. MRN).
-    Tries UUID first; otherwise looks up Patient.external_id.
+    Accepts a UUID or Patient.external_id. Ensures the row exists either way.
     """
     u = _maybe_uuid(ident)
     if u:
-        return u
+        row = db.get(Patient, u)  # validate existence for UUID path
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Patient not found: {ident}")
+        return row.id
 
-    row = (
-        db.query(Patient)
-        .filter(Patient.external_id == str(ident))
-        .first()
-    )
+    row = db.query(Patient).filter(Patient.external_id == str(ident)).first()
     if not row:
-        raise NoResultFound(f"Patient not found for identifier '{ident}'")
+        raise HTTPException(status_code=404, detail=f"Patient not found: {ident}")
     return row.id
 
 def _resolve_coverage_id(db: Session, ident: str | uuid.UUID) -> uuid.UUID:
     """
-    Accepts a UUID or an external identifier.
-    Tries UUID first; otherwise looks up Coverage.external_id,
-    and finally falls back to member_id for backward compatibility.
+    Accepts a UUID or Coverage.external_id (fallback to member_id).
+    Ensures the row exists either way.
     """
     u = _maybe_uuid(ident)
     if u:
-        return u
+        row = db.get(Coverage, u)  # validate existence for UUID path
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Coverage not found: {ident}")
+        return row.id
 
-    row = (
-        db.query(Coverage)
-        .filter(Coverage.external_id == str(ident))
-        .first()
-    )
+    row = db.query(Coverage).filter(Coverage.external_id == str(ident)).first()
     if not row:
-        row = (
-            db.query(Coverage)
-            .filter(Coverage.member_id == str(ident))
-            .first()
-        )
+        row = db.query(Coverage).filter(Coverage.member_id == str(ident)).first()
     if not row:
-        raise NoResultFound(f"Coverage not found for identifier '{ident}'")
+        raise HTTPException(status_code=404, detail=f"Coverage not found: {ident}")
     return row.id
 
 def _decide_initial_status(requires: bool) -> tuple[PriorAuthStatus, str]:
-    """
-    Pure dynamic logic — no code-specific rules.
-    """
     if not requires:
         return PriorAuthStatus.not_required, "No prior authorization required"
     return PriorAuthStatus.pending, "Submitted for review"
 
-# -------- main entrypoint
+# -----------------------
+# Main entrypoint
+# -----------------------
 
 def create_pa(
     db: Session,
@@ -83,28 +80,38 @@ def create_pa(
     code: str,
     diagnosis_codes: list[str],
 ) -> PriorAuthRequest:
-    # Resolve external identifiers/UUIDs
+    """
+    Creates a PriorAuthRequest from either UUIDs or business identifiers.
+    Returns 404 for missing patient/coverage, and 422 for integrity issues.
+    """
     pid = _resolve_patient_id(db, patient_id)
     cid = _resolve_coverage_id(db, coverage_id)
 
-    # Dynamic requirements engine decides whether PA is required
     requires, required_docs = check_requirements(code)
-
-    status, disposition = _decide_initial_status(requires)
+    status_val, disposition = _decide_initial_status(requires)
 
     par = PriorAuthRequest(
         patient_id=pid,
         coverage_id=cid,
         code=code,
         diagnosis_codes=",".join(diagnosis_codes or []),
-        status=status,
+        status=status_val,
         disposition=disposition,
     )
+
     db.add(par)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        # Surface as a client error, not a 500
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not create prior auth: {str(e.orig) if getattr(e, 'orig', None) else str(e)}",
+        )
     db.refresh(par)
 
-    # non-persisted convenience fields for the response layer
+    # Convenience fields (not persisted)
     par._requires = requires
     par._required_docs = required_docs
     return par
