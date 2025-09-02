@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .routes import requirements, db_check, auth, prior_auth, attachments
+from .routes import requirements, db_check, auth, prior_auth, attachments, patients
 
 api_router = APIRouter()
 
