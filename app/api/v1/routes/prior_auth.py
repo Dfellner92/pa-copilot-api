@@ -6,65 +6,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.db import get_db
-from app.domain.schemas import PriorAuthCreateIn  # keep input schema only
-from app.domain.models import PriorAuthRequest
+from app.domain.schemas import PriorAuthCreateIn
+from app.domain.models import PriorAuthRequest, Patient
 from app.services.pa import create_pa
 
 router = APIRouter()
 
 
-# --- Optional related models (best-effort imports) ---
-try:
-    # Adjust these names to whatever your models are actually called
-    from app.domain.models import Patient as _Patient  # or Member
-except Exception:
-    _Patient = None  # type: ignore
-
-try:
-    from app.domain.models import Provider as _Provider
-except Exception:
-    _Provider = None  # type: ignore
-
-
-def _enrich_member_provider(db: Session, par: PriorAuthRequest) -> Dict[str, Optional[str]]:
-    """Lookup member/provider names if not already on the row."""
-    member_id = getattr(par, "member_id", None) or getattr(par, "patient_id", None)
-    member_name = getattr(par, "member_name", None)
-    member_dob = getattr(par, "member_dob", None)
-    provider_npi = getattr(par, "provider_npi", None)
-    provider_name = getattr(par, "provider_name", None)
-
-    # Member enrichment
-    if (member_name is None or member_dob is None) and _Patient is not None and member_id:
-        try:
-            row = db.execute(select(_Patient).where(
-                (_Patient.id == member_id) | (_Patient.id == str(member_id))
-            )).scalar_one_or_none()
-            if row is not None:
-                # Try common attribute names
-                member_name = member_name or getattr(row, "full_name", None) or getattr(row, "name", None)
-                member_dob  = member_dob  or getattr(row, "dob", None) or getattr(row, "date_of_birth", None)
-        except Exception:
-            pass  # don't fail the request if enrichment fails
-
-    # Provider enrichment
-    if provider_name is None and _Provider is not None and provider_npi:
-        try:
-            prow = db.execute(select(_Provider).where(
-                (_Provider.npi == provider_npi) | (_Provider.id == provider_npi)
-            )).scalar_one_or_none()
-            if prow is not None:
-                provider_name = getattr(prow, "name", None)
-        except Exception:
-            pass
-
-    return {
-        "member_id": str(member_id) if member_id is not None else None,
-        "member_name": member_name,
-        "member_dob": member_dob,
-        "provider_npi": provider_npi,
-        "provider_name": provider_name,
-    }
+def _to_list_from_csv(val: Optional[str]) -> List[str]:
+    if not val:
+        return []
+    return [p.strip() for p in str(val).split(",") if p.strip()]
 
 
 def _serialize_par(
@@ -74,62 +26,64 @@ def _serialize_par(
     requires_auth: Optional[bool] = None,
     required_docs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Stable, enriched shape that the UI expects."""
+    """Stable, enriched shape for the UI."""
     from app.services.requirements import check_requirements
 
     if requires_auth is None or required_docs is None:
         req, docs = check_requirements(getattr(par, "code", None))
     else:
-        req, docs = requires_auth, required_docs or []
+        req, docs = requires_auth, (required_docs or [])
 
-    # Enrich from related tables when missing
-    enrich = _enrich_member_provider(db, par)
-
-    attachments = []
-    try:
-        for a in getattr(par, "attachments", []) or []:
-            attachments.append(
-                {"id": getattr(a, "id", None), "name": getattr(a, "name", None), "url": getattr(a, "url", None)}
+    # Use loaded relationship if present; otherwise look it up once
+    patient = getattr(par, "patient", None)
+    if patient is None and getattr(par, "patient_id", None):
+        try:
+            patient = (
+                db.execute(
+                    select(Patient).where(
+                        (Patient.id == par.patient_id) | (Patient.id == str(par.patient_id))
+                    )
+                )
+                .scalar_one_or_none()
             )
-    except Exception:
-        pass
+        except Exception:
+            patient = None
 
-    payload: Dict[str, Any] = {
+    member_id = str(getattr(par, "patient_id", "")) or None
+    member_name = None
+    member_dob = None
+    if patient is not None:
+        first = getattr(patient, "first_name", None)
+        last = getattr(patient, "last_name", None)
+        if first or last:
+            member_name = " ".join([p for p in [first, last] if p])
+        member_dob = getattr(patient, "birth_date", None)
+
+    diagnosis_list = _to_list_from_csv(getattr(par, "diagnosis_codes", None))
+
+    return {
         "id": str(getattr(par, "id")),
         "status": getattr(par, "status", "pending"),
         "disposition": getattr(par, "disposition", None),
         "requiresAuth": bool(req),
-        "requiredDocs": docs or [],
-        # parity/ids
+        "requiredDocs": docs,
+        # core ids / codes
         "patient_id": getattr(par, "patient_id", None),
         "coverage_id": getattr(par, "coverage_id", None),
         "code": getattr(par, "code", None),
-        "diagnosisCodes": getattr(par, "diagnosis_codes", []) or [],
-        # member / provider (prefer denormalized columns on PAR, then enrichment)
-        "member": {
-            "id": str(getattr(par, "member_id", None) or getattr(par, "patient_id", None) or enrich["member_id"])
-            if (getattr(par, "member_id", None) or getattr(par, "patient_id", None) or enrich["member_id"])
-            else None,
-            "name": getattr(par, "member_name", None) or enrich["member_name"],
-            "dob": getattr(par, "member_dob", None) or enrich["member_dob"],
-        },
-        "provider": {
-            "npi": getattr(par, "provider_npi", None) or enrich["provider_npi"],
-            "name": getattr(par, "provider_name", None) or enrich["provider_name"],
-        },
-        # mirrors for your mapper fallbacks
-        "memberId": enrich["member_id"] or getattr(par, "member_id", None) or getattr(par, "patient_id", None),
-        "memberName": getattr(par, "member_name", None) or enrich["member_name"],
-        "providerNpi": getattr(par, "provider_npi", None) or enrich["provider_npi"],
-        "providerName": getattr(par, "provider_name", None) or enrich["provider_name"],
+        "diagnosisCodes": diagnosis_list,
+        # member (and mirrors used by the UI mapper)
+        "member": {"id": member_id, "name": member_name, "dob": member_dob},
+        "memberId": member_id,
+        "memberName": member_name,
+        # provider isn’t modeled yet; keep keys present
+        "provider": {"npi": None, "name": None},
+        "providerNpi": None,
+        "providerName": None,
+        # conveniences
         "codes": [getattr(par, "code")] if getattr(par, "code", None) else [],
-        # timestamps
-        "created_at": getattr(par, "created_at", None),
-        "updated_at": getattr(par, "updated_at", None) or getattr(par, "created_at", None),
-        # attachments
-        "attachments": attachments,
+        "attachments": [],
     }
-    return payload
 
 
 @router.post("/requests", status_code=201)
@@ -148,7 +102,6 @@ def submit_prior_auth(payload: PriorAuthCreateIn, db: Session = Depends(get_db))
 
 @router.get("/requests/{pa_id}")
 def get_prior_auth(pa_id: str, db: Session = Depends(get_db)):
-    # Accept UUIDs in string or UUID column
     try:
         key = UUID(pa_id)
     except ValueError:
@@ -175,11 +128,6 @@ def list_prior_auths(
     if status:
         q = q.filter(PriorAuthRequest.status == status)
     total = q.count()
-    rows = (
-        q.order_by(PriorAuthRequest.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    rows = q.order_by(PriorAuthRequest.id.desc()).offset(offset).limit(limit).all()
     items = [_serialize_par(db, r) for r in rows]
     return {"items": items, "total": total}
