@@ -20,6 +20,12 @@ class PriorAuthOut(BaseModel):
     requiresAuth: bool
     requiredDocs: List[str]
 
+# NEW: Patient creation schema
+class PatientCreateIn(BaseModel):
+    external_id: str
+    first_name: str
+    last_name: str
+    birth_date: str
 
 # dev only
 class DocumentRefOut(BaseModel):

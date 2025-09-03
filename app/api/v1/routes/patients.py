@@ -6,6 +6,7 @@ import uuid
 
 from app.db import get_db
 from app.domain.models import Patient
+from app.domain.schemas import PatientCreateIn  # NEW: Import the schema
 
 router = APIRouter()
 
@@ -23,23 +24,19 @@ def _row_to_out(p: Patient):
 
 @router.post("/patients", status_code=201)
 def create_patient(
-    *,
+    payload: PatientCreateIn,  # NEW: Use the Pydantic model
     db: Session = Depends(get_db),
-    external_id: str,
-    first_name: str,
-    last_name: str,
-    birth_date: str,
 ):
     # enforce uniqueness on external_id (schema already has unique index)
-    existing = db.query(Patient).filter(Patient.external_id == external_id).first()
+    existing = db.query(Patient).filter(Patient.external_id == payload.external_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="external_id already exists")
 
     p = Patient(
-        external_id=external_id,
-        first_name=first_name,
-        last_name=last_name,
-        birth_date=birth_date,
+        external_id=payload.external_id,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        birth_date=payload.birth_date,
     )
     db.add(p)
     db.commit()
