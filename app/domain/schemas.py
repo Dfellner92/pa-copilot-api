@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from app.domain.enums import PriorAuthStatus
 
 class RequirementsOut(BaseModel):
@@ -12,6 +12,9 @@ class PriorAuthCreateIn(BaseModel):
     code: str
     diagnosis_codes: List[str] = []
     documents: List[str] = []  # names/ids (future DocumentReference)
+    # NEW: Provider fields
+    provider_name: Optional[str] = None
+    provider_npi: Optional[str] = None
 
 class PriorAuthOut(BaseModel):
     id: str
@@ -27,7 +30,7 @@ class PatientCreateIn(BaseModel):
     last_name: str
     birth_date: str
 
-# NEW: Coverage creation schema
+# Coverage creation schema
 class CoverageCreateIn(BaseModel):
     external_id: str
     member_id: str

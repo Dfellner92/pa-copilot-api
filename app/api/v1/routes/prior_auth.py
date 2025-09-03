@@ -94,6 +94,8 @@ def submit_prior_auth(payload: PriorAuthCreateIn, db: Session = Depends(get_db))
         coverage_id=payload.coverage_id,
         code=payload.code,
         diagnosis_codes=payload.diagnosis_codes,
+        provider_name=payload.provider_name,
+        provider_npi=payload.provider_npi,
     )
     requires = getattr(par, "_requires", None)
     required_docs = getattr(par, "_required_docs", None)

@@ -79,6 +79,8 @@ def create_pa(
     coverage_id: str | uuid.UUID,
     code: str,
     diagnosis_codes: list[str],
+    provider_name: Optional[str] = None,
+    provider_npi: Optional[str] = None,
 ) -> PriorAuthRequest:
     """
     Creates a PriorAuthRequest from either UUIDs or business identifiers.
@@ -97,6 +99,8 @@ def create_pa(
         diagnosis_codes=",".join(diagnosis_codes or []),
         status=status_val,
         disposition=disposition,
+        provider_name=provider_name or "",
+        provider_npi=provider_npi or "",
     )
 
     db.add(par)
