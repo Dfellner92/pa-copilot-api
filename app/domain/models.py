@@ -23,7 +23,6 @@ class User(Base):
 class Coverage(Base):
     __tablename__ = "coverages"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # NEW: stable business key to resolve non-UUID IDs (e.g., 'cov-A123')
     external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, unique=True)
     member_id: Mapped[str] = mapped_column(String(64), nullable=False)
     plan: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -40,9 +39,9 @@ class PriorAuthRequest(Base):
     diagnosis_codes: Mapped[str] = mapped_column(String(256), default="")    # comma-separated
     status: Mapped[PriorAuthStatus] = mapped_column(SAEnum(PriorAuthStatus), default=PriorAuthStatus.requested)
     disposition: Mapped[str] = mapped_column(String(255), default="")        # brief reason/note
-    # NEW: Provider fields
-    provider_name: Mapped[str] = mapped_column(String(255), default="")
-    provider_npi: Mapped[str] = mapped_column(String(20), default="")
+    # Provider fields - these will be None for existing records, populated for new ones
+    provider_name: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
+    provider_npi: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     patient = relationship("Patient")
     coverage = relationship("Coverage")
 
