@@ -7,10 +7,10 @@ class RequirementsOut(BaseModel):
     requiredDocs: List[str]
 
 class PriorAuthCreateIn(BaseModel):
-    patient_id: Union[str, UUID] = Field(..., description="UUID of the patient or string that can be UUID-cast")
-    coverage_id: str = Field(..., min_length=1)
-    code: str = Field(..., min_length=1)
-    diagnosis_codes: List[str] = Field(default_factory=list)
+    patient_id: str
+    coverage_id: str
+    code: str
+    diagnosis_codes: List[str] = []
     documents: List[str] = []  # names/ids (future DocumentReference)
 
 class PriorAuthOut(BaseModel):
