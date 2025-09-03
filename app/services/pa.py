@@ -99,8 +99,8 @@ def create_pa(
         diagnosis_codes=",".join(diagnosis_codes or []),
         status=status_val,
         disposition=disposition,
-        provider_name=provider_name or "",
-        provider_npi=provider_npi or "",
+        provider_name=provider_name,
+        provider_npi=provider_npi,
     )
 
     db.add(par)
