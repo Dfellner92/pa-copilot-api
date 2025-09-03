@@ -39,9 +39,9 @@ class PriorAuthRequest(Base):
     diagnosis_codes: Mapped[str] = mapped_column(String(256), default="")    # comma-separated
     status: Mapped[PriorAuthStatus] = mapped_column(SAEnum(PriorAuthStatus), default=PriorAuthStatus.requested)
     disposition: Mapped[str] = mapped_column(String(255), default="")        # brief reason/note
-    # Provider fields - these will be None for existing records, populated for new ones
-    provider_name: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
-    provider_npi: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    # TEMPORARILY REMOVED: Provider fields until we can add them to the database
+    # provider_name: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
+    # provider_npi: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     patient = relationship("Patient")
     coverage = relationship("Coverage")
 

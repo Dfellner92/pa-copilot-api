@@ -61,6 +61,10 @@ def _serialize_par(
 
     diagnosis_list = _to_list_from_csv(getattr(par, "diagnosis_codes", None))
 
+    # Get provider information from the database record
+    provider_name = getattr(par, "provider_name", None)
+    provider_npi = getattr(par, "provider_npi", None)
+
     return {
         "id": str(getattr(par, "id")),
         "status": getattr(par, "status", "pending"),
@@ -76,10 +80,10 @@ def _serialize_par(
         "member": {"id": member_id, "name": member_name, "dob": member_dob},
         "memberId": member_id,
         "memberName": member_name,
-        # provider isn’t modeled yet; keep keys present
-        "provider": {"npi": None, "name": None},
-        "providerNpi": None,
-        "providerName": None,
+        # provider information from database
+        "provider": {"npi": provider_npi, "name": provider_name},
+        "providerNpi": provider_npi,
+        "providerName": provider_name,
         # conveniences
         "codes": [getattr(par, "code")] if getattr(par, "code", None) else [],
         "attachments": [],
