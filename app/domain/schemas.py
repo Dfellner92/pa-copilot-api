@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from app.domain.enums import PriorAuthStatus
 
@@ -12,7 +12,7 @@ class PriorAuthCreateIn(BaseModel):
     code: str
     diagnosis_codes: List[str] = []
     documents: List[str] = []  # names/ids (future DocumentReference)
-    # NEW: Provider fields
+    # Provider fields
     provider_name: Optional[str] = None
     provider_npi: Optional[str] = None
 
@@ -37,6 +37,25 @@ class CoverageCreateIn(BaseModel):
     plan: str
     payer: str
     patient_id: str
+
+# NEW: User management schemas
+class UserCreateIn(BaseModel):
+    email: EmailStr
+    password: str
+    roles: str = "clinician"  # Comma-separated roles
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    roles: str
+
+class UserLoginIn(BaseModel):
+    email: str
+    password: str
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 # dev only
 class DocumentRefOut(BaseModel):
