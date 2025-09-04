@@ -57,7 +57,7 @@ async def register(user_data: UserCreateIn, db: Session = Depends(get_db)):
         return UserOut(
             id=str(new_user.id),
             email=new_user.email,
-            roles=[user_data.roles]  # Return as list for API response
+            roles=user_data.roles  # Return as string, not list
         )
     except Exception as e:
         db.rollback()
