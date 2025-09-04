@@ -102,7 +102,8 @@ async def login(request: Request, db: Session = Depends(get_db)):
         roles_list = _roles_string_to_list(user.roles)
         
         access_token = create_access_token(
-            data={"sub": user.email, "roles": roles_list}
+            sub=user.email, 
+            roles=roles_list
         )
         
         return TokenOut(access_token=access_token, token_type="bearer")
