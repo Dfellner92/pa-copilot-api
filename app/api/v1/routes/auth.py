@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from typing import List
 
 from app.db import get_db
 from app.domain.models import User
@@ -17,92 +18,144 @@ def authenticate_user(db: Session, email_or_username: str, password: str) -> Use
         return None
     return user
 
-def _roles_string_to_list(roles_str: str) -> list[str]:
-    """Convert comma-separated roles string to list"""
-    if not roles_str:
+def _roles_string_to_list(roles_str: str) -> List[str]:
+    # Convert comma-separated string to list
+    if not roles_str or not roles_str.strip():
         return []
-    return [role.strip() for role in roles_str.split(",") if role.strip()]
+    return [role.strip() for role in roles_str.split(',') if role.strip()]
 
-def _roles_list_to_string(roles_list: list[str]) -> str:
-    """Convert roles list to comma-separated string"""
-    return ",".join(roles_list)
-
-@router.post("/register", response_model=UserOut, summary="Register a new user", tags=["auth"])
-def register_user(user_data: UserCreateIn, db: Session = Depends(get_db)):
-    """Register a new user with email, password, and roles"""
+@router.post("/register", summary="Register new user", tags=["auth"])
+async def register(user_data: UserCreateIn, db: Session = Depends(get_db)):
+    """Register a new user with email, password, and roles."""
+    
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
     
-    # Validate roles
-    valid_roles = ["clinician", "admin", "reviewer"]
-    user_roles = _roles_string_to_list(user_data.roles)
-    invalid_roles = [role for role in user_roles if role not in valid_roles]
-    if invalid_roles:
-        raise HTTPException(status_code=400, detail=f"Invalid roles: {', '.join(invalid_roles)}. Valid roles: {', '.join(valid_roles)}")
+    # Hash password
+    hashed_password = hash_password(user_data.password)
+    
+    # Convert roles list to comma-separated string for storage
+    roles_str = ','.join(user_data.roles) if user_data.roles else 'user'
     
     # Create new user
-    user = User(
+    new_user = User(
         email=user_data.email,
-        hashed_password=hash_password(user_data.password),
-        roles=user_data.roles
+        hashed_password=hashed_password,
+        roles=roles_str
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
     
-    return UserOut(id=str(user.id), email=user.email, roles=user.roles)
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        return UserOut(
+            id=str(new_user.id),
+            email=new_user.email,
+            roles=user_data.roles  # Return as list for API response
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}"
+        )
 
-@router.post("/seed", summary="Create a demo user", tags=["auth"])
-def seed_user(email: str, password: str, roles: str = "clinician", db: Session = Depends(get_db)):
-    """Legacy endpoint for seeding demo users"""
-    if db.query(User).filter(User.email == email).first():
-        return {"detail": "exists"}
-    user = User(email=email, hashed_password=hash_password(password), roles=roles)
-    db.add(user)
-    db.commit()
-    return {"detail": "ok"}
-
-@router.post("/token", response_model=TokenOut, summary="Login", tags=["auth"])
+@router.post("/token", summary="Login", tags=["auth"])
 async def login(request: Request, db: Session = Depends(get_db)):
     """
     Accepts either:
       - JSON: {"email": "...", "password": "..."} (or {"username": "...", "password": "..."})
       - Form:  username=...&password=... (application/x-www-form-urlencoded)
-    Returns:  {"access_token": "...", "token_type": "bearer"}
     """
-    content_type = request.headers.get("content-type", "")
-    username = ""
-    password = ""
-
     try:
+        content_type = request.headers.get("content-type", "")
+        
         if "application/json" in content_type:
             body = await request.json()
-            username = (body.get("email") or body.get("username") or "").strip()
-            password = (body.get("password") or "").strip()
+            email_or_username = body.get("email") or body.get("username", "")
+            password = body.get("password", "")
         else:
             form = await request.form()
-            username = (form.get("username") or form.get("email") or "").strip()
-            password = (form.get("password") or "").strip()
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            email_or_username = form.get("username", "")
+            password = form.get("password", "")
+        
+        if not email_or_username or not password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email/username and password are required"
+            )
+        
+        user = authenticate_user(db, email_or_username, password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email/username or password"
+            )
+        
+        # Convert roles string to list for token creation
+        roles_list = _roles_string_to_list(user.roles)
+        
+        access_token = create_access_token(
+            data={"sub": user.email, "roles": roles_list}
+        )
+        
+        return TokenOut(access_token=access_token, token_type="bearer")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
 
-    if not username or not password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    user = authenticate_user(db, username, password)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    # Convert string roles to list for token creation
-    roles_list = _roles_string_to_list(user.roles)
+@router.post("/seed-users", summary="Seed demo users", tags=["auth"])
+def seed_users(db: Session = Depends(get_db)):
+    """Create demo users for testing."""
+    demo_users = [
+        {"email": "demo@demo.com", "password": "demo123", "roles": ["admin"]},
+        {"email": "clinician@demo.com", "password": "demo123", "roles": ["clinician"]},
+    ]
     
-    token = create_access_token(str(user.id), roles_list)
-    return TokenOut(access_token=token, token_type="bearer")
-
-@router.get("/users", response_model=List[UserOut], summary="List all users", tags=["auth"])
-def list_users(db: Session = Depends(get_db)):
-    """List all users (for admin purposes)"""
-    users = db.query(User).all()
-    return [UserOut(id=str(user.id), email=user.email, roles=user.roles) for user in users]
+    created_users = []
+    
+    for user_data in demo_users:
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.email == user_data["email"]).first()
+        if existing_user:
+            continue
+            
+        # Hash password
+        hashed_password = hash_password(user_data["password"])
+        
+        # Convert roles list to comma-separated string
+        roles_str = ','.join(user_data["roles"])
+        
+        # Create user
+        new_user = User(
+            email=user_data["email"],
+            hashed_password=hashed_password,
+            roles=roles_str
+        )
+        
+        db.add(new_user)
+        created_users.append({
+            "email": user_data["email"],
+            "roles": user_data["roles"]
+        })
+    
+    try:
+        db.commit()
+        return {"message": f"Created {len(created_users)} demo users", "users": created_users}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to seed users: {str(e)}"
+        )
