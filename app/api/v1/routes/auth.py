@@ -39,8 +39,8 @@ async def register(user_data: UserCreateIn, db: Session = Depends(get_db)):
     # Hash password
     hashed_password = hash_password(user_data.password)
     
-    # Convert roles list to comma-separated string for storage
-    roles_str = ','.join(user_data.roles) if user_data.roles else 'user'
+    # Store roles as-is (already a string from frontend)
+    roles_str = user_data.roles if user_data.roles else 'clinician'
     
     # Create new user
     new_user = User(
@@ -57,7 +57,7 @@ async def register(user_data: UserCreateIn, db: Session = Depends(get_db)):
         return UserOut(
             id=str(new_user.id),
             email=new_user.email,
-            roles=user_data.roles  # Return as list for API response
+            roles=[user_data.roles]  # Return as list for API response
         )
     except Exception as e:
         db.rollback()
