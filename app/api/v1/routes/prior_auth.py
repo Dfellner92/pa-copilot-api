@@ -137,3 +137,23 @@ def list_prior_auths(
     rows = q.order_by(PriorAuthRequest.id.desc()).offset(offset).limit(limit).all()
     items = [_serialize_par(db, r) for r in rows]
     return {"items": items, "total": total}
+
+
+@router.delete("/requests/{pa_id}")
+def delete_prior_auth(pa_id: str, db: Session = Depends(get_db)):
+    try:
+        key = UUID(pa_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    stmt = select(PriorAuthRequest).where(
+        (PriorAuthRequest.id == key) | (PriorAuthRequest.id == str(key))
+    )
+    par = db.execute(stmt).scalar_one_or_none()
+    if not par:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    db.delete(par)
+    db.commit()
+    
+    return {"message": "Prior authorization request deleted successfully"}
